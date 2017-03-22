@@ -1,5 +1,6 @@
 # Twitch chat bot
-Pre-made python3 twitch chat bot with nothing to do but add commands and actions.
+A twitch chat bot pre-made with python3 for your easy use.
+All you have to worry about is incoming messages.
 
 # Install instructions
 1. Rename config.json.example to config.json.
