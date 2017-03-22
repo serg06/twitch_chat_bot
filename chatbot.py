@@ -9,9 +9,11 @@ from queue import Queue
 from collections import deque
 from time import sleep
 from typing import Tuple
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
+one_second = timedelta(seconds=1)
 config_file = 'config.json'
 
 
@@ -26,14 +28,14 @@ class Config:
     def __init__(self):
         try:
             config = json.load(open(config_file, 'r'))
-        except Exception:
-            logger.error('Unable to open config file %s. Did you follow instructions in README.md?' %config_file)
+        except:
+            logger.error('Unable to open config file %s. Did you follow instructions in README.md?' % config_file)
 
         try:
             self.username = config['username']
             self.oauth = config['oauth_token']
         except KeyError as err:
-            logger.error('Could not extract %s from config file %s.' %(err.message, config_file))
+            logger.error('Could not extract %s from config file %s.' % (err.message, config_file))
 
     def __str__(self):
         return 'host: {host}\n' \
@@ -48,9 +50,52 @@ class Config:
                     oauth=self.oauth)
 
 
+# history of max. last 20 sent messages in max. last 30 seconds
+class ChatHistory(deque):
+    class ChatMessage:
+        def __init__(self, msg: str):
+            self.message = msg
+            self.timestamp = datetime.now()
+
+    now = datetime.now()
+    thirty_seconds = one_second*30
+
+    def __init__(self):
+        super().__init__(maxlen=20)
+
+    def append(self, msg):
+        super().append(self.ChatMessage(msg))
+
+    # Check if self is full
+    def full(self):
+        # If we haven't sent 20 messages yet, we're clearly not full
+        if len(self) < self.maxlen:
+            return False
+        # Otherwise, we can update the full function to check if our messages are older than 30 seconds
+        else:
+            self.full = self._full
+            return self.full()
+
+    # Check if self is full of messages no older than 30 seconds
+    def _full(self):
+        # Get oldest message
+        thirty_seconds_ago = datetime.now() - self.thirty_seconds
+        msg = self.popleft()
+
+        # If it's less than thirty seconds old, put it back and let 'em know we're still full
+        if msg.timestamp > thirty_seconds_ago:
+            self.appendleft(msg)
+            return True
+
+        return False
+
+
 class Chatbot:
     config = Config()
     message_re = re.compile(r'^:\w+!\w+@\w+\.tmi\.twitch\.tv PRIVMSG #\w+ :')
+
+    # Whether bot has been started (on another thread) or not
+    started = False
 
     # Queue for incoming messages
     incoming_messages = Queue()
@@ -58,9 +103,19 @@ class Chatbot:
     # Queue for messages to send
     chat_queue = Queue()
 
-    # Last 3 sent messages
-    chat_history = deque(maxlen=3)
+    # Last 20 sent messages in last 30 seconds
+    chat_history = ChatHistory()
 
+    # Last 3 sent messages
+    last_3_messages = deque(maxlen=3)
+
+    # Last sent message time
+    last_sent = datetime.now()
+
+    # Minimum delay between messages
+    min_delay = one_second * 1.1
+
+    # Create socket connection to given channel
     def __init__(self, channel, username=None, oauth=None):
         self.config.channel = channel
 
@@ -70,29 +125,46 @@ class Chatbot:
 
         self.socket = socket.socket()
         self.socket.connect((self.config.host, self.config.port))
+        self.socket.setblocking(False)
+
         self._send('PASS {}'.format(self.config.oauth))
         self._send('NICK {}'.format(self.config.username))
         self._send('JOIN #{}'.format(self.config.channel))
 
-        logger.debug('Chatbot initialized. Config: \n%s' %self.config)
+        logger.debug('Chatbot initialized. Config: \n%s' % self.config)
 
-    # Start self multi-threadedly
+    # Start the bot on its own thread
     def start(self):
+        if self.started:
+            logger.error('Fam this guy is already started. If you want another chatbot, create another chatbot.')
+
         try:
-            # ("Chatbot {} in channel {}".format(self.config.username, self.config.channel))
             t = Thread(target=self._run, name="Chatbot {} in channel {}".format(self.config.username, self.config.channel))
             t.daemon = True
             t.start()
+            self.started = True
         except:
             logger.error("Unable to start bot thread")
 
-    # Manually run the chatbot
+    # Run the chatbot on this thread
     def _run(self):
         while True:
-            response = self.socket.recv(8192).decode('utf-8')
-            if response == 'PING :tmi.twitch.tv\r\n':
-                self.socket.send('PONG :tmi.twitch.tv\r\n'.encode('utf-8'))
-            else:
+            # Wait a bit each loop
+            sleep(0.1)
+
+            # Receive response if there is one
+            response = None
+            try:
+                response = self.socket.recv(8192).decode('utf-8')
+            except BlockingIOError:
+                pass
+
+            # Handle response if exists
+            if response is not None:
+                # Respond to ping if needed
+                if response == 'PING :tmi.twitch.tv\r\n':
+                    self._send('PONG :tmi.twitch.tv\r\n')
+
                 for line in response.split('\r\n'):
                     try:
                         username = re.search(r'\w+', line).group(0) # return the entire match
@@ -101,23 +173,26 @@ class Chatbot:
                         pass
                     else:
                         self.incoming_messages.put((username, message))
-                if not self.chat_queue.empty():
-                    self._chat(self.chat_queue.get())
-            # Sleep just long enough to prevent being 8-hour IP banned. That's 20 messages per second.
-            # TODO: Implement queue or some shit to make this more efficient.
-            sleep(1/(20/30))
+
+            # Send any queued chats
+            if self.last_sent + self.min_delay <= datetime.now() and \
+                    not self.chat_queue.empty() and \
+                    not self.chat_history.full():
+                self._chat(self.chat_queue.get())
+                self.last_sent = datetime.now()
 
     # Manually send socket message
     def _send(self, msg: str):
-        logger.debug('SEND: %s' %msg)
+        logger.debug('SEND: %s' % msg)
         self.socket.send('{}\r\n'.format(msg).encode('utf-8'))
 
     # Manually send chat message
-    def _chat(self, msg):
+    def _chat(self, msg: str):
         # Prevent duplicate messages
-        msg = msg[0:100 - 1 - len(self.chat_history)] + ' '
-        while msg in self.chat_history:
+        msg = msg[0:100 - 1 - len(self.last_3_messages)] + ' '
+        while msg in self.last_3_messages:
             msg += '-'
+        self.last_3_messages.append(msg)
         self.chat_history.append(msg)
         self._send('PRIVMSG #{} :{}'.format(self.config.channel, msg))
 
@@ -131,4 +206,5 @@ class Chatbot:
 
     # Send chat message when ready
     def chat(self, msg):
+        logger.debug('QUEUE: %s' % msg)
         self.chat_queue.put(msg)

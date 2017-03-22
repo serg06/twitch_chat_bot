@@ -13,6 +13,7 @@ while True:
         username, message = bot.next_message()
         print("%s: %s" %(username, message))
         if message.lower().startswith("!hello"):
-            bot.chat("@{username} Hello!".format(username=username))
+            bot.chat("@{} Hello!".format(username))
     else:
-        sleep(0.01)
+        # Wait a bit to not over-work the poor bot
+        sleep(0.1)
