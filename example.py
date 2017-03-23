@@ -7,7 +7,7 @@ from time import sleep
 bot = chatbot.Chatbot('ice_poseidon')
 bot.start()
 
-# Add a list of admin chatters so you can control the bot remotely
+# Add a list of twitch usernames who you want to give remote admin control of your bot
 admin_usernames = ['example_admin']
 
 # Handle incoming messages
