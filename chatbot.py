@@ -93,9 +93,10 @@ class ChatHistory(deque):
 class Chatbot:
     config = Config()
     message_re = re.compile(r'^:\w+!\w+@\w+\.tmi\.twitch\.tv PRIVMSG #\w+ :')
+    running_thread = None
 
-    # Whether bot has been started (on another thread) or not
-    started = False
+    # Whether to stop the running thread
+    should_stop = False
 
     # Queue for incoming messages
     incoming_messages = Queue()
@@ -133,22 +134,30 @@ class Chatbot:
 
         logger.debug('Chatbot initialized. Config: \n%s' % self.config)
 
-    # Start the bot on its own thread
+    # Run on another thread.
     def start(self):
-        if self.started:
+        if self.running_thread is not None:
             logger.error('Fam this guy is already started. If you want another chatbot, create another chatbot.')
 
         try:
-            t = Thread(target=self._run, name="Chatbot {} in channel {}".format(self.config.username, self.config.channel))
-            t.daemon = True
-            t.start()
-            self.started = True
+            self.running_thread = Thread(target=self._run, name="Chatbot {} in channel {}".format(self.config.username, self.config.channel))
+            self.running_thread.daemon = True
+            self.running_thread.start()
         except:
-            logger.error("Unable to start bot thread")
+            logger.error("Unable to start bot running thread")
+
+    # Stop the bot's thread.
+    def stop(self):
+        if not self.running_thread:
+            logger.error('Who you tryina stop? I\'m not running!')
+        self.should_stop = True
+        self.running_thread.join()
+        self.running_thread = None
 
     # Run the chatbot on this thread
     def _run(self):
-        while True:
+        self.should_stop = False
+        while not self.should_stop:
             # Wait a bit each loop
             sleep(0.1)
 
@@ -180,6 +189,9 @@ class Chatbot:
                     not self.chat_history.full():
                 self._chat(self.chat_queue.get())
                 self.last_sent = datetime.now()
+
+        # Exit this thread
+        exit()
 
     # Manually send socket message
     def _send(self, msg: str):
