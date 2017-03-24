@@ -16,4 +16,5 @@ Solves many annoying problems like:
     * Set your oauth code (to create one, visit https://twitchapps.com/tmi/)
 
 # Example usage
-See [example.py](example.py)
+See [example.py](example.py) for simple usage.
+See [example2.py](example2.py) for more advanced usage.
