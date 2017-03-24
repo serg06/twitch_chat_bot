@@ -7,33 +7,17 @@ from time import sleep
 bot = chatbot.Chatbot('ice_poseidon')
 bot.start()
 
-# Add a list of twitch usernames who you want to give remote admin control of your bot
-admin_usernames = ['example_admin']
-
 # Handle incoming messages
 while True:
     if bot.has_next_message():
         username, message = bot.next_message()
         print("%s: %s" %(username, message))
 
-        # normal commands
+        # commands people can execute
         if message.lower().startswith('!hello'):
             bot.chat("Hello @{}!".format(username))
-        elif message.lower().startswith('!bye'):
+        if message.lower().startswith('!bye'):
             bot.chat("Bye @{}!".format(username))
-
-        # admin-only commands
-        elif username in admin_usernames:
-            # stop the bot until it's manually restarted, as it can't
-            #   receive messages while it's stopped
-            if message == '!stop':
-                bot.stop()
-                break
-            # restart the bot
-            elif message == '!restart':
-                bot.stop()
-                bot.start()
-
     else:
         # Wait a bit to not over-work the poor bot
         sleep(0.1)
