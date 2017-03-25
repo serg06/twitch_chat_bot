@@ -15,9 +15,8 @@ logging.basicConfig(level=logging.DEBUG)
 one_second = timedelta(seconds=1)
 config_file = 'config.json'
 
-# TODO: limit outgoing messages to prevent spam
-# TODO: Limit incoming messages to prevent memory overflow
 # TODO: global cooldown timer, max queue of 1 (mutex), etc
+# TODO: add error throwing for when you can't chat, e.g. when chat requires 1-hour following, etc
 
 # Chatbot config
 class Config:
