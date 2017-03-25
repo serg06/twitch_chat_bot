@@ -161,7 +161,7 @@ class Chatbot:
         self.should_stop = False
         while not self.should_stop:
             # Wait a bit each loop
-            sleep(0.1)
+            sleep(0.05)
 
             # Receive response if there is one
             response = None

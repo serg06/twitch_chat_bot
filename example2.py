@@ -24,7 +24,7 @@ def main():
                     size = int(args.get(0, 3))
                     if size > 6:
                         bot.chat('Limit is 6 @{} cmonBruh'.format(username))
-                    else:
+                    elif size > 0:
                         build_pyramid(bot, size)
                 except:
                     print("Failed to make pyramid.")
@@ -44,15 +44,8 @@ def main():
 
 
 def build_pyramid(bot, size):
-    i = 1
-    while i <= size:
-        bot.chat('TriHard '*i)
-        i += 1
-    i -= 2
-    while i >= 0:
-        bot.chat('TriHard '*i)
-        i -= 1
-
+    for i in range(1, size * 2):
+        bot.chat('TriHard '*min(i, size*2-i))
 
 if __name__ == "__main__":
     main()
