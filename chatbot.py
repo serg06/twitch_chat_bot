@@ -5,7 +5,6 @@ import json
 import socket
 import re
 from threading import Thread
-from queue import Queue
 from collections import deque
 from time import sleep
 from typing import Tuple
@@ -17,7 +16,7 @@ one_second = timedelta(seconds=1)
 config_file = 'config.json'
 
 # TODO: limit outgoing messages to prevent spam
-# TODO: Limit incoming messages to prevent
+# TODO: Limit incoming messages to prevent memory overflow
 # TODO: global cooldown timer, max queue of 1 (mutex), etc
 
 # Chatbot config
@@ -102,10 +101,10 @@ class Chatbot:
     should_stop = False
 
     # Queue for incoming messages
-    incoming_messages = Queue()
+    incoming_messages = deque(maxlen=100)
 
     # Queue for messages to send
-    chat_queue = Queue()
+    chat_queue = deque(maxlen=20)
 
     # Last 20 sent messages in last 30 seconds
     chat_history = ChatHistory()
@@ -184,13 +183,13 @@ class Chatbot:
                     except AttributeError:
                         pass
                     else:
-                        self.incoming_messages.put((username, message))
+                        self.incoming_messages.append((username, message))
 
             # Send any queued chats
             if self.last_sent + self.min_delay <= datetime.now() and \
-                    not self.chat_queue.empty() and \
+                    len(self.chat_queue) != 0 and \
                     not self.chat_history.full():
-                self._chat(self.chat_queue.get())
+                self._chat(self.chat_queue.popleft())
                 self.last_sent = datetime.now()
 
         # Exit this thread
@@ -213,13 +212,13 @@ class Chatbot:
 
     # Check if bot has new messages to process
     def has_next_message(self):
-        return not self.incoming_messages.empty()
+        return len(self.incoming_messages) != 0
 
     # Pop message
     def next_message(self) -> Tuple[str, str]:
-        return self.incoming_messages.get()
+        return self.incoming_messages.popleft()
 
     # Send chat message when ready
     def chat(self, msg):
         logger.debug('QUEUE: %s' % msg)
-        self.chat_queue.put(msg)
+        self.chat_queue.append(msg)
